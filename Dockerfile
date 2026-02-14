@@ -51,7 +51,7 @@ WORKDIR /workspace/mlc-llm
 # Build from source (CPU-only)
 # ------------------------------
 RUN mkdir -p build && cd build && \
-    echo "\ny\ny\ny" | python3 ../cmake/gen_cmake_config.py && \
+    echo "\ny\ny\ny\ny\nn\nn\nn\ny" | python3 ../cmake/gen_cmake_config.py && \
     cmake .. && make -j $(nproc) && cd ..
 
 # ------------------------------
