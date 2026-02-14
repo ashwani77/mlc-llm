@@ -1,9 +1,9 @@
-# Multi-purpose Docker image for MLC-LLM with CUDA support
+# Multi-purpose Docker image for MLC-LLM (CPU-only for faster CI/CD)
 # Can be used for both development (interactive) and building (CI/CD)
 
-FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
+FROM ubuntu:22.04
 
-# Prevent interactive prompts during package installation
+# Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
@@ -84,28 +84,25 @@ RUN pip install --no-cache-dir \
     psutil \
     typing_extensions
 
-# Install TVM with CUDA support
-RUN pip install --pre -U -f https://mlc.ai/wheels mlc-ai-nightly-cu121
+# Install TVM (CPU-only version is faster to install)
+RUN pip install --pre -U -f https://mlc.ai/wheels mlc-ai-nightly-cpu
 
-# THE FIX: Build MLC-LLM with proper configuration
+# Build MLC-LLM with CPU-only configuration
 WORKDIR /workspace/mlc-llm
-
-# Create build directory
 RUN mkdir -p build
 
-# Generate cmake config NON-INTERACTIVELY with a pre-created config file
+# Create CPU-only cmake config
 RUN cd build && \
     cat > config.cmake << 'EOF' && \
 set(CMAKE_BUILD_TYPE RelWithDebInfo)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(USE_LLVM "/usr/lib/llvm-17/bin/llvm-config")
 set(HIDE_PRIVATE_SYMBOLS ON)
-set(USE_CUDA ON)
-set(USE_CUBLAS ON)
-set(USE_CUDNN ON)
-set(USE_CUTLASS ON)
-set(USE_FLASHINFER ON)
-set(USE_THRUST ON)
+set(USE_CUDA OFF)
+set(USE_CUBLAS OFF)
+set(USE_CUDNN OFF)
+set(USE_CUTLASS OFF)
+set(USE_FLASHINFER OFF)
 set(USE_OPENCL OFF)
 set(USE_METAL OFF)
 set(USE_VULKAN OFF)
@@ -114,9 +111,7 @@ EOF
     cmake .. && \
     echo "CMake configuration completed successfully"
 
-# Build with LIMITED parallelism to avoid memory exhaustion
-# Use -j4 instead of -j$(nproc) to prevent OOM errors
-# Add VERBOSE=1 to see detailed error messages if build fails
+# Build with limited parallelism (prevents memory issues)
 RUN cd build && \
     make -j4 VERBOSE=1 || { \
         echo "===================================="; \
@@ -151,5 +146,5 @@ CMD []
 
 # Labels
 LABEL org.opencontainers.image.source=https://github.com/mlc-ai/mlc-llm
-LABEL org.opencontainers.image.description="Multi-purpose MLC-LLM builder with CUDA 12.1 support"
+LABEL org.opencontainers.image.description="Multi-purpose MLC-LLM builder (CPU-only)"
 LABEL org.opencontainers.image.licenses=Apache-2.0
