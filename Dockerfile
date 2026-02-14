@@ -2,7 +2,7 @@
 # Can be used for both development (interactive) and building (CI/CD)
 
 # Use Ubuntu 22.04 as base image
-FROM ubuntu:22.04
+FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
