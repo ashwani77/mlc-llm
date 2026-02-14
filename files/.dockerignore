@@ -1,0 +1,68 @@
+# .dockerignore - Files to exclude from Docker build context
+# This speeds up builds and reduces image size
+
+# Git
+.git
+.gitignore
+.gitmodules
+.github
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Documentation
+docs/
+*.md
+LICENSE
+NOTICE
+
+# CI/CD
+.github/
+docker/
+
+# Build artifacts
+*.whl
+*.tar.gz
+
+# Logs
+*.log

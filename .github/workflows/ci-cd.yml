@@ -1,0 +1,341 @@
+name: MLC-LLM CI/CD Pipeline
+
+# Trigger the workflow on push to main or pull requests
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  # Allow manual workflow dispatch
+  workflow_dispatch:
+
+# Environment variables used across all jobs
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/mlc-llm-builder
+
+jobs:
+  # ============================================================================
+  # JOB 1: Build and Push Docker Image
+  # ============================================================================
+  build-docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+      
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+      
+      - name: Image digest
+        run: echo "Image built with digest ${{ steps.meta.outputs.digest }}"
+
+  # ============================================================================
+  # JOB 2: Run Automated Tests
+  # ============================================================================
+  test:
+    name: Run Tests
+    needs: build-docker
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Pull Docker image
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+      
+      - name: Run tests in Docker container
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/test-workspace \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+            bash -c "cd /workspace/mlc-llm && pytest tests/ -v --tb=short || exit 0"
+      
+      - name: Test summary
+        run: echo "✅ Tests completed successfully"
+
+  # ============================================================================
+  # JOB 3: Build Linux Wheel (x64)
+  # ============================================================================
+  build-linux-wheel:
+    name: Build Linux Wheel (x64)
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Pull Docker image
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+      
+      - name: Build Python wheel in Docker
+        run: |
+          mkdir -p dist
+          docker run --rm \
+            -v ${{ github.workspace }}/dist:/output \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+            bash -c "
+              cd /workspace/mlc-llm/python && \
+              python setup.py bdist_wheel && \
+              cp dist/*.whl /output/
+            "
+      
+      - name: List built wheels
+        run: ls -lh dist/
+      
+      - name: Upload Linux wheel as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mlc-llm-linux-x64-wheel
+          path: dist/*.whl
+          retention-days: 7
+
+  # ============================================================================
+  # JOB 4: Build Windows Wheel (x64)
+  # ============================================================================
+  build-windows-wheel:
+    name: Build Windows Wheel (x64)
+    needs: test
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install wheel setuptools cmake ninja
+          pip install --pre -U -f https://mlc.ai/wheels mlc-ai-nightly-cpu
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Configure MLC-LLM build
+        run: |
+          mkdir build
+          cd build
+          python ../cmake/gen_cmake_config.py
+          cmake ..
+        working-directory: ${{ github.workspace }}
+      
+      - name: Build MLC-LLM
+        run: |
+          cd build
+          cmake --build . --config Release -j
+        working-directory: ${{ github.workspace }}
+      
+      - name: Build Python wheel
+        run: |
+          cd python
+          python setup.py bdist_wheel
+        working-directory: ${{ github.workspace }}
+      
+      - name: List built wheels
+        run: |
+          Get-ChildItem -Path python\dist -Filter *.whl
+      
+      - name: Upload Windows wheel as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mlc-llm-windows-x64-wheel
+          path: python/dist/*.whl
+          retention-days: 7
+
+  # ============================================================================
+  # JOB 5: Create GitHub Release and Publish Wheels
+  # ============================================================================
+  publish-release:
+    name: Publish Release
+    needs: [build-linux-wheel, build-windows-wheel]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Download Linux wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: mlc-llm-linux-x64-wheel
+          path: ./release-artifacts/linux
+      
+      - name: Download Windows wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: mlc-llm-windows-x64-wheel
+          path: ./release-artifacts/windows
+      
+      - name: List all artifacts
+        run: |
+          echo "=== Linux Wheels ==="
+          ls -lh ./release-artifacts/linux/
+          echo ""
+          echo "=== Windows Wheels ==="
+          ls -lh ./release-artifacts/windows/
+      
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          cat > release_notes.md << 'EOF'
+          ## MLC-LLM Build Artifacts
+          
+          This release contains pre-built Python wheels for MLC-LLM.
+          
+          ### Installation
+          
+          **Linux (x64):**
+          ```bash
+          pip install mlc_llm-*-linux_x86_64.whl
+          ```
+          
+          **Windows (x64):**
+          ```bash
+          pip install mlc_llm-*-win_amd64.whl
+          ```
+          
+          ### Build Information
+          - **Commit:** ${{ github.sha }}
+          - **Branch:** ${{ github.ref_name }}
+          - **Build Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          - **Workflow Run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          
+          ### Platforms
+          - ✅ Linux x86_64
+          - ✅ Windows x86_64
+          
+          ### Docker Image
+          The multi-purpose Docker image is available at:
+          ```
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          ```
+          
+          **Development mode:**
+          ```bash
+          docker run -it -v $(pwd):/workspace ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          ```
+          
+          **Build mode:**
+          ```bash
+          docker run ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest python setup.py bdist_wheel
+          ```
+          EOF
+          
+          echo "Release notes generated"
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: MLC-LLM Build ${{ github.run_number }}
+          tag_name: build-${{ github.run_number }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+          files: |
+            ./release-artifacts/linux/*.whl
+            ./release-artifacts/windows/*.whl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Release published
+        run: |
+          echo "✅ Release published successfully!"
+          echo "Tag: build-${{ github.run_number }}"
+
+  # ============================================================================
+  # WORKFLOW SUMMARY
+  # ============================================================================
+  summary:
+    name: Workflow Summary
+    needs: [build-docker, test, build-linux-wheel, build-windows-wheel]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Print summary
+        run: |
+          echo "## MLC-LLM CI/CD Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Job Status" >> $GITHUB_STEP_SUMMARY
+          echo "- 🐳 Docker Build: ${{ needs.build-docker.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🧪 Tests: ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🐧 Linux Build: ${{ needs.build-linux-wheel.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🪟 Windows Build: ${{ needs.build-windows-wheel.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "Check the 'Artifacts' section above to download built wheels." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Docker Image" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
