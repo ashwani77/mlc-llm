@@ -57,6 +57,7 @@ RUN mkdir -p build && cd build && \
       -DUSE_VULKAN=OFF \
       -DUSE_ROCM=OFF \
       -DUSE_METAL=OFF && \
+      -DTVM_SOURCE_DIR=../3rdparty/tvm && \
     make -j$(nproc) && cd ..
 
 # ------------------------------
