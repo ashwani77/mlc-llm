@@ -52,7 +52,7 @@ WORKDIR /workspace/mlc-llm
 # ------------------------------
 RUN mkdir -p build && cd build && \
     echo "\ny\ny\ny\nn\nn\nn\nn" | python3 ../cmake/gen_cmake_config.py && \
-    cmake .. && make -j $(nproc) && cd ..
+    cmake .. && make -j 2 && cd ..
 
 # ------------------------------
 # Install Python package
