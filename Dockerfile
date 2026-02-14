@@ -89,7 +89,7 @@ RUN pip install --pre -U -f https://mlc.ai/wheels mlc-ai-nightly-cpu
 
 # Build MLC-LLM from source
 RUN mkdir -p build && cd build \
-    && python ../cmake/gen_cmake_config.py \
+    && echo "\ny\ny\ny\nn\nn\nn\nn" | python ../cmake/gen_cmake_config.py \
     && cmake .. \
     && make -j$(nproc) \
     && cd ..
