@@ -53,11 +53,11 @@ WORKDIR /workspace/mlc-llm
 RUN mkdir -p build && cd build && \
     python3 ../cmake/gen_cmake_config.py && \
     cmake .. \
-      -DUSE_CUDA=OFF \
+      -DUSE_CUDA=ON \
       -DUSE_VULKAN=OFF \
       -DUSE_ROCM=OFF \
       -DUSE_METAL=OFF && \
-    make -j$(nproc)
+    make -j$(nproc) && cd ..
 
 # ------------------------------
 # Install Python package
@@ -66,7 +66,7 @@ ENV MLC_LLM_SOURCE_DIR=/workspace/mlc-llm
 ENV PYTHONPATH=$MLC_LLM_SOURCE_DIR/python:$PYTHONPATH
 
 # Install CLI wrapper
-RUN echo 'alias mlc_llm="python3.13 -m mlc_llm"' >> /etc/bash.bashrc
+RUN echo 'alias mlc_llm="python3 -m mlc_llm"' >> /etc/bash.bashrc
 
 USER ${USER}
 
