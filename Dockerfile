@@ -52,14 +52,7 @@ WORKDIR /workspace/mlc-llm
 # ------------------------------
 RUN mkdir -p build && cd build && \
     python3 ../cmake/gen_cmake_config.py && \
-    TVM_SOURCE_DIR=../3rdparty/tvm \
-    cmake .. \
-      -DUSE_CUDA=ON \
-      -DUSE_VULKAN=OFF \
-      -DUSE_ROCM=OFF \
-      -DUSE_METAL=OFF && \
-      -DTVM_SOURCE_DIR=../3rdparty/tvm && \
-    make -j$(nproc) && cd ..
+    cmake .. && make -j $(nproc) && cd ..
 
 # ------------------------------
 # Install Python package
