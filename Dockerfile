@@ -24,28 +24,8 @@ RUN apt-get update && apt-get install -y \
     software-properties-common \
     gnupg2 \
     ca-certificates \
+    nvidia-cuda-toolkit \
     && rm -rf /var/lib/apt/lists/*
-
-# Install NVIDIA CUDA Toolkit 12.1
-RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.0-1_all.deb && \
-    dpkg -i cuda-keyring_1.0-1_all.deb && \
-    rm cuda-keyring_1.0-1_all.deb && \
-    apt-get update && \
-    apt-get install -y \
-    cuda-toolkit-12-1 \
-    cuda-cudart-12-1 \
-    cuda-cudart-dev-12-1 \
-    libcublas-12-1 \
-    libcublas-dev-12-1 \
-    libcudnn8 \
-    libcudnn8-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set CUDA environment variables
-ENV CUDA_HOME=/usr/local/cuda-12.1
-ENV PATH=${CUDA_HOME}/bin:${PATH}
-ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
-ENV LIBRARY_PATH=${CUDA_HOME}/lib64:${LIBRARY_PATH}
 
 # Install additional system dependencies
 RUN apt-get update && apt-get install -y \
@@ -135,7 +115,7 @@ RUN cd build && \
 
 # Build with limited parallelism
 RUN cd build && \
-    make -j4 VERBOSE=1 || { \
+    make -j 4 || { \
         echo "===================================="; \
         echo "BUILD FAILED - Error details above"; \
         echo "===================================="; \
