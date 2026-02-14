@@ -10,14 +10,14 @@ ARG GID=1000
 # System Dependencies
 # ------------------------------
 RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-venv \
+    python3-pip \
     build-essential \
     cmake \
     git \
     curl \
     ninja-build \
-    python3.13 \
-    python3.13-venv \
-    python3-pip \
     llvm \
     clang \
     libtinfo-dev \
@@ -51,7 +51,7 @@ WORKDIR /workspace/mlc-llm
 # Build from source (CPU-only)
 # ------------------------------
 RUN mkdir -p build && cd build && \
-    python3.13 ../cmake/gen_cmake_config.py && \
+    python3 ../cmake/gen_cmake_config.py && \
     cmake .. \
       -DUSE_CUDA=OFF \
       -DUSE_VULKAN=OFF \
