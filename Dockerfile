@@ -87,7 +87,7 @@ RUN pip install --no-cache-dir \
 # Install TVM with CUDA support
 RUN pip install --pre -U -f https://mlc.ai/wheels mlc-ai-nightly-cu121
 
-# THE FIX: Build MLC-LLM with proper configuration
+# Build MLC-LLM with proper configuration
 WORKDIR /workspace/mlc-llm
 
 # Create build directory
@@ -111,25 +111,20 @@ set(USE_METAL OFF)
 set(USE_VULKAN OFF)
 set(USE_ROCM OFF)
 EOF
-    cmake .. && \
-    echo "CMake configuration completed successfully"
+    cmake .. && echo "CMake configuration completed successfully"
 
 # Build with LIMITED parallelism to avoid memory exhaustion
-# Use -j4 instead of -j$(nproc) to prevent OOM errors
-# Add VERBOSE=1 to see detailed error messages if build fails
 RUN cd build && \
     make -j4 VERBOSE=1 || { \
         echo "===================================="; \
         echo "BUILD FAILED - Error details above"; \
         echo "===================================="; \
         exit 1; \
-    } && \
-    echo "Build completed successfully"
+    } && echo "Build completed successfully"
 
 # Install MLC-LLM Python package
 WORKDIR /workspace/mlc-llm/python
-RUN pip install -e . && \
-    echo "MLC-LLM Python package installed"
+RUN pip install -e . && echo "MLC-LLM Python package installed"
 
 # Verify installation
 RUN python -c "import mlc_llm; print('✓ MLC-LLM imported successfully')" && \
