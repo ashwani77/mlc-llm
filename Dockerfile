@@ -105,7 +105,7 @@ RUN mlc_llm --help || python -m mlc_llm --help
 WORKDIR /workspace
 
 # Copy entrypoint script
-COPY docker/entrypoint.sh /entrypoint.sh
+COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Set entrypoint
