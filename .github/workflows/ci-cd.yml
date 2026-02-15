@@ -134,12 +134,12 @@ jobs:
           docker run --rm \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
             python -c "
-              import mlc_llm
-              import tvm
-              print('✓ MLC-LLM version:', mlc_llm.__version__)
-              print('✓ TVM version:', tvm.__version__)
-              print('✓ All imports successful')
-              "
+            import mlc_llm
+            import tvm
+            print('✓ MLC-LLM version:', mlc_llm.__version__)
+            print('✓ TVM version:', tvm.__version__)
+            print('✓ All imports successful')
+            "
 
       - name: Verify CLI functionality
         run: |
