@@ -148,7 +148,7 @@ RUN pip install -e . && \
     echo "✓ MLC-LLM Python package installed"
 
 # Set PYTHONPATH now that the package is installed
-ENV PYTHONPATH=/workspace/mlc-llm/python:${PYTHONPATH}
+#ENV PYTHONPATH=/workspace/mlc-llm/python:${PYTHONPATH}
 
 # =============================================================================
 # STEP 6: VALIDATE INSTALLATION
@@ -173,7 +173,7 @@ RUN python -c "import tvm; print('TVM library:', tvm.__file__)" && \
 # Enables both development and build modes
 # =============================================================================
 
-COPY docker/entrypoint.sh /entrypoint.sh
+COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
