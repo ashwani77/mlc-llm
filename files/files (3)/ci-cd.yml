@@ -36,11 +36,11 @@ jobs:
     permissions:
       contents: read
       packages: write
-
+    
     outputs:
       image-tag: ${{ steps.meta.outputs.tags }}
       image-digest: ${{ steps.build.outputs.digest }}
-
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -104,7 +104,7 @@ jobs:
     permissions:
       contents: read
       packages: read
-
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -169,7 +169,7 @@ jobs:
     permissions:
       contents: read
       packages: read
-
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -224,7 +224,7 @@ jobs:
     name: Build Windows Wheel (x64)
     needs: run-tests
     runs-on: windows-latest
-
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -316,7 +316,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
-
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -419,7 +419,7 @@ jobs:
     needs: [build-docker-image, run-tests, build-linux-wheel, build-windows-wheel]
     runs-on: ubuntu-latest
     if: always()
-
+    
     steps:
       - name: Generate summary
         run: |

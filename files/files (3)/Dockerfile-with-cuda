@@ -1,9 +1,8 @@
-# MLC-LLM CI/CD Docker Image
+# MLC-LLM CI/CD Docker Image with CUDA Support
 # Multi-purpose: Development environment + Build environment
-# Follows official MLC-LLM "Option 2: Build from Source" instructions
-# Reference: https://llm.mlc.ai/docs/install/mlc_llm.html#option-2-build-from-source
+# Follows official MLC-LLM "Option 2: Build from Source" with CUDA enabled
 
-FROM ubuntu:22.04
+FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
 
 # =============================================================================
 # ENVIRONMENT SETUP
@@ -12,28 +11,36 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=UTC \
     MLC_LLM_SOURCE_DIR=/workspace/mlc-llm \
-    PYTHONPATH=/workspace/mlc-llm/python:${PYTHONPATH}
+    PYTHONPATH=/workspace/mlc-llm/python:${PYTHONPATH} \
+    CUDA_HOME=/usr/local/cuda-12.1 \
+    PATH=/usr/local/cuda-12.1/bin:${PATH} \
+    LD_LIBRARY_PATH=/usr/local/cuda-12.1/lib64:${LD_LIBRARY_PATH}
 
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # =============================================================================
-# STEP 1: INSTALL BUILD DEPENDENCIES
-# As specified in official documentation
+# STEP 1: INSTALL CUDA DEPENDENCIES (cuDNN, etc.)
 # =============================================================================
 
-# Install system dependencies
+# Install cuDNN and other CUDA libraries
 RUN apt-get update && apt-get install -y \
-    # Build essentials (required)
+    libcudnn8 \
+    libcudnn8-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# =============================================================================
+# STEP 2: INSTALL BUILD DEPENDENCIES
+# =============================================================================
+
+RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
     git \
     wget \
     curl \
-    # Python (required)
     python3.11 \
     python3.11-dev \
     python3-pip \
-    # Additional tools
     software-properties-common \
     gnupg2 \
     ca-certificates \
@@ -49,12 +56,11 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
 # Upgrade pip
 RUN python -m pip install --upgrade pip setuptools wheel
 
-# Install Rust and Cargo (required for Hugging Face tokenizers)
+# Install Rust and Cargo
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# Install LLVM >= 15 (required for TVM)
-# Using LLVM 17 for best compatibility
+# Install LLVM 17
 RUN wget https://apt.llvm.org/llvm.sh && \
     chmod +x llvm.sh && \
     ./llvm.sh 17 && \
@@ -65,8 +71,7 @@ ENV LLVM_CONFIG=/usr/bin/llvm-config-17 \
     PATH=/usr/lib/llvm-17/bin:${PATH}
 
 # =============================================================================
-# STEP 2: CLONE MLC-LLM REPOSITORY
-# Using official git workflow
+# STEP 3: CLONE MLC-LLM REPOSITORY
 # =============================================================================
 
 WORKDIR /workspace
@@ -76,12 +81,11 @@ RUN git clone --recursive https://github.com/mlc-ai/mlc-llm.git && \
     echo "MLC-LLM cloned at commit: $(git rev-parse HEAD)"
 
 # =============================================================================
-# STEP 3: INSTALL PYTHON DEPENDENCIES
+# STEP 4: INSTALL PYTHON DEPENDENCIES
 # =============================================================================
 
 WORKDIR /workspace/mlc-llm
 
-# Install core dependencies for building and testing
 RUN pip install --no-cache-dir \
     numpy \
     torch \
@@ -94,26 +98,22 @@ RUN pip install --no-cache-dir \
     pytest-cov \
     packaging
 
-# Install TVM (required dependency)
-# Using CPU version for maximum compatibility across platforms
-RUN pip install --pre -U -f https://mlc.ai/wheels mlc-ai-nightly-cpu
+# Install TVM with CUDA support
+RUN pip install --pre -U -f https://mlc.ai/wheels mlc-ai-nightly-cu121
 
 # =============================================================================
-# STEP 4: CONFIGURE AND BUILD MLC-LLM
-# Following official build instructions
+# STEP 5: CONFIGURE AND BUILD MLC-LLM WITH CUDA
 # =============================================================================
 
-# Create build directory
 RUN mkdir -p build
 
 WORKDIR /workspace/mlc-llm/build
 
-# Generate build configuration interactively
-# Configured for CPU-only build (works on all platforms)
+# Generate build configuration with CUDA ENABLED
 RUN python ../cmake/gen_cmake_config.py << 'EOF'
 y
 y
-n
+y
 n
 n
 n
@@ -124,18 +124,16 @@ EOF
 RUN cmake .. && \
     echo "✓ CMake configuration completed"
 
-# Build MLC-LLM libraries
-# Using limited parallelism to avoid memory issues
-RUN make -j$(( $(nproc) < 4 ? $(nproc) : 4 )) && \
-    echo "✓ MLC-LLM libraries built successfully"
+# Build MLC-LLM libraries with limited parallelism
+RUN make -j4 && \
+    echo "✓ MLC-LLM libraries built successfully with CUDA support"
 
 # Verify build outputs
 RUN ls -lh libmlc_llm.so libtvm_runtime.so && \
     echo "✓ Build artifacts verified"
 
 # =============================================================================
-# STEP 5: INSTALL MLC-LLM PYTHON PACKAGE
-# Using pip editable install as recommended
+# STEP 6: INSTALL MLC-LLM PYTHON PACKAGE
 # =============================================================================
 
 WORKDIR /workspace/mlc-llm/python
@@ -144,26 +142,26 @@ RUN pip install -e . && \
     echo "✓ MLC-LLM Python package installed"
 
 # =============================================================================
-# STEP 6: VALIDATE INSTALLATION
+# STEP 7: VALIDATE INSTALLATION
 # =============================================================================
 
 WORKDIR /workspace
 
-# Verify CLI is accessible
 RUN mlc_llm --help && \
     echo "✓ MLC-LLM CLI verified"
 
-# Verify Python import
 RUN python -c "import mlc_llm; print('MLC-LLM version:', mlc_llm.__version__)" && \
     echo "✓ MLC-LLM Python import verified"
 
-# Verify build libraries are accessible
 RUN python -c "import tvm; print('TVM library:', tvm.__file__)" && \
     echo "✓ TVM library verified"
 
+# Verify CUDA is detected (will show False in build, True at runtime with GPU)
+RUN python -c "import torch; print('CUDA available (build):', torch.cuda.is_available())" || \
+    echo "⚠ CUDA runtime not available (normal during build, will work with --gpus at runtime)"
+
 # =============================================================================
 # MULTI-PURPOSE ENTRYPOINT
-# Enables both development and build modes
 # =============================================================================
 
 COPY docker/entrypoint.sh /entrypoint.sh
@@ -177,7 +175,8 @@ CMD []
 # =============================================================================
 
 LABEL org.opencontainers.image.source="https://github.com/mlc-ai/mlc-llm" \
-      org.opencontainers.image.description="MLC-LLM multi-purpose Docker image for development and CI/CD" \
-      org.opencontainers.image.version="1.0" \
+      org.opencontainers.image.description="MLC-LLM Docker image with CUDA 12.1 support" \
+      org.opencontainers.image.version="1.0-cuda" \
       org.opencontainers.image.licenses="Apache-2.0" \
-      maintainer="MLC-LLM CI/CD Pipeline"
+      maintainer="MLC-LLM CI/CD Pipeline" \
+      cuda.version="12.1.1"

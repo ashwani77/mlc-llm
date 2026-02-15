@@ -51,7 +51,7 @@ if [ $# -eq 0 ]; then
     print_success "Development environment ready!"
     print_info "Starting interactive shell..."
     print_info ""
-
+    
     # Start interactive bash shell
     exec /bin/bash
 
@@ -62,13 +62,13 @@ else
     print_info "============================================"
     print_info "Executing command: $@"
     print_info ""
-
+    
     # Change to MLC-LLM directory if needed
     if [ -d "${MLC_LLM_SOURCE_DIR}" ]; then
         cd "${MLC_LLM_SOURCE_DIR}"
         print_info "Working directory: ${MLC_LLM_SOURCE_DIR}"
     fi
-
+    
     # Execute the provided command
     exec "$@"
 fi
