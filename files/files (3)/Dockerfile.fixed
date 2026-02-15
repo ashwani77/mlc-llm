@@ -17,18 +17,15 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # =============================================================================
 # STEP 1: INSTALL BUILD DEPENDENCIES
-# As specified in official documentation
 # =============================================================================
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    # Build essentials (required)
     build-essential \
     cmake \
     git \
     wget \
     curl \
-    # Python (required)
     python3.11 \
     python3.11-dev \
     python3-pip \
@@ -65,7 +62,6 @@ ENV LLVM_CONFIG=/usr/bin/llvm-config-17 \
 
 # =============================================================================
 # STEP 2: CLONE MLC-LLM REPOSITORY
-# Using official git workflow
 # =============================================================================
 
 WORKDIR /workspace
@@ -80,7 +76,7 @@ RUN git clone --recursive https://github.com/mlc-ai/mlc-llm.git && \
 
 WORKDIR /workspace/mlc-llm
 
-# Install core dependencies for building and testing
+# Install core dependencies
 RUN pip install --no-cache-dir \
     numpy \
     torch \
@@ -93,16 +89,13 @@ RUN pip install --no-cache-dir \
     pytest-cov \
     packaging
 
-# Install TVM (required dependency)
-# Using CPU version for maximum compatibility across platforms
+# Install TVM (CPU version for maximum compatibility)
 RUN pip install --pre -U -f https://mlc.ai/wheels mlc-ai-nightly-cpu
 
 # =============================================================================
 # STEP 4: CONFIGURE AND BUILD MLC-LLM
-# Following official build instructions
 # =============================================================================
 
-# Create build directory
 RUN mkdir -p build
 
 WORKDIR /workspace/mlc-llm/build
@@ -121,16 +114,14 @@ RUN ls -lh libmlc_llm.so libtvm_runtime.so && echo "✓ Build artifacts verified
 
 # =============================================================================
 # STEP 5: INSTALL MLC-LLM PYTHON PACKAGE
-# Using pip editable install as recommended
 # =============================================================================
 
 WORKDIR /workspace/mlc-llm/python
 
-RUN pip install -e . && \
-    echo "✓ MLC-LLM Python package installed"
+RUN pip install -e . && echo "✓ MLC-LLM Python package installed"
 
-# Set PYTHONPATH now that the package is installed
-#ENV PYTHONPATH=/workspace/mlc-llm/python:${PYTHONPATH}
+# Set PYTHONPATH now that package is installed
+ENV PYTHONPATH=/workspace/mlc-llm/python:${PYTHONPATH}
 
 # =============================================================================
 # STEP 6: VALIDATE INSTALLATION
@@ -139,23 +130,21 @@ RUN pip install -e . && \
 WORKDIR /workspace
 
 # Verify CLI is accessible
-RUN mlc_llm --help && \
-    echo "✓ MLC-LLM CLI verified"
+RUN mlc_llm --help && echo "✓ MLC-LLM CLI verified"
 
 # Verify Python import
 RUN python -c "import mlc_llm; print('MLC-LLM version:', mlc_llm.__version__)" && \
     echo "✓ MLC-LLM Python import verified"
 
-# Verify build libraries are accessible
+# Verify TVM
 RUN python -c "import tvm; print('TVM library:', tvm.__file__)" && \
     echo "✓ TVM library verified"
 
 # =============================================================================
 # MULTI-PURPOSE ENTRYPOINT
-# Enables both development and build modes
 # =============================================================================
 
-COPY entrypoint.sh /entrypoint.sh
+COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
