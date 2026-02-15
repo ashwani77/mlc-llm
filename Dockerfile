@@ -138,17 +138,13 @@ RUN pip install --no-cache-dir \
 #RUN pip install --pre -U -f https://mlc.ai/wheels mlc-ai-nightly-cu121
 
 # Build MLC-LLM with proper configuration
-WORKDIR /workspace/mlc-llm
-RUN mkdir -p build
-
-# Create cmake config file - SIMPLIFIED to avoid cuDNN issues
-RUN cd build && \
+RUN mkdir -p build && cd build && \
     echo 'set(CMAKE_BUILD_TYPE RelWithDebInfo)' > config.cmake && \
     echo 'set(CMAKE_EXPORT_COMPILE_COMMANDS ON)' >> config.cmake && \
     echo 'set(USE_LLVM "/usr/lib/llvm-17/bin/llvm-config")' >> config.cmake && \
     echo 'set(HIDE_PRIVATE_SYMBOLS ON)' >> config.cmake && \
     echo 'set(USE_CUDA ON)' >> config.cmake && \
-    echo 'set(USE_CUBLAS ON)' >> config.cmake && \
+    echo 'set(USE_CUBLAS OFF)' >> config.cmake && \
     echo 'set(USE_CUDNN OFF)' >> config.cmake && \
     echo 'set(USE_CUTLASS OFF)' >> config.cmake && \
     echo 'set(USE_FLASHINFER OFF)' >> config.cmake && \
@@ -157,12 +153,8 @@ RUN cd build && \
     echo 'set(USE_METAL OFF)' >> config.cmake && \
     echo 'set(USE_VULKAN OFF)' >> config.cmake && \
     echo 'set(USE_ROCM OFF)' >> config.cmake && \
-    cmake .. && \
-    echo "CMake configuration completed successfully"
-
-# Build with LIMITED parallelism to avoid memory exhaustion
-RUN cd build && \
-    make -j2 VERBOSE=1 || { \
+    cmake -G Ninja .. && \
+    ninja -j2 VERBOSE=1 || { \
         echo "===================================="; \
         echo "BUILD FAILED - Error details above"; \
         echo "===================================="; \
