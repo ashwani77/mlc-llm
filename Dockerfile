@@ -21,6 +21,8 @@ RUN pip install --pre -U -f https://mlc.ai/wheels \
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
+    cargo \
+    rustc \
     lsb-release \
     software-properties-common \
     && wget https://apt.llvm.org/llvm.sh \
