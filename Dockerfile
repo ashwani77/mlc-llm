@@ -147,12 +147,7 @@ RUN mkdir -p build && cd build && \
     echo 'set(USE_VULKAN OFF)' >> config.cmake && \
     echo 'set(USE_ROCM OFF)' >> config.cmake && \
     cmake -G Ninja .. && \
-    ninja -j2 VERBOSE=1 || { \
-        echo "===================================="; \
-        echo "BUILD FAILED - Error details above"; \
-        echo "===================================="; \
-        exit 1; \
-    } && \
+    ninja -j2 && cd .. && \
     echo "Build completed successfully"
 
 # Install MLC-LLM Python package
