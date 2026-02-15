@@ -11,8 +11,7 @@ FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=UTC \
-    MLC_LLM_SOURCE_DIR=/workspace/mlc-llm \
-    PYTHONPATH=/workspace/mlc-llm/python:${PYTHONPATH}
+    MLC_LLM_SOURCE_DIR=/workspace/mlc-llm
 
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
@@ -55,10 +54,15 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Install LLVM >= 15 (required for TVM)
 # Using LLVM 17 for best compatibility
-RUN wget https://apt.llvm.org/llvm.sh && \
-    chmod +x llvm.sh && \
-    ./llvm.sh 17 && \
-    rm llvm.sh
+RUN apt-get update && apt-get install -y \
+    lsb-release \
+    software-properties-common \
+    gnupg \
+    && wget https://apt.llvm.org/llvm.sh \
+    && chmod +x llvm.sh \
+    && ./llvm.sh 17 all \
+    && rm llvm.sh \
+    && rm -rf /var/lib/apt/lists/*
 
 ENV LLVM_CONFIG=/usr/bin/llvm-config-17 \
     LLVM_HOME=/usr/lib/llvm-17 \
@@ -143,6 +147,9 @@ WORKDIR /workspace/mlc-llm/python
 RUN pip install -e . && \
     echo "✓ MLC-LLM Python package installed"
 
+# Set PYTHONPATH now that the package is installed
+ENV PYTHONPATH=/workspace/mlc-llm/python:${PYTHONPATH}
+
 # =============================================================================
 # STEP 6: VALIDATE INSTALLATION
 # =============================================================================
@@ -166,7 +173,7 @@ RUN python -c "import tvm; print('TVM library:', tvm.__file__)" && \
 # Enables both development and build modes
 # =============================================================================
 
-COPY entrypoint.sh /entrypoint.sh
+COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]
