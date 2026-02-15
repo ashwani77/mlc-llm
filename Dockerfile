@@ -39,6 +39,7 @@ RUN apt-get update && apt-get install -y \
     vim \
     nano \
     htop \
+    python3-apt --fix-missing \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Python 3.11 as default
