@@ -109,49 +109,49 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-#      - name: Log in to GitHub Container Registry
-#        uses: docker/login-action@v3
-#        with:
-#          registry: ${{ env.REGISTRY }}
-#          username: ${{ github.actor }}
-#          password: ${{ secrets.GITHUB_TOKEN }}
-#
-#      - name: Pull Docker image
-#        run: |
-#          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-#
-#      - name: Run unit tests
-#        run: |
-#          docker run --rm \
-#            -v ${{ github.workspace }}:/test-workspace \
-#            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
-#            bash -c "cd /workspace/mlc-llm && pytest tests/python/ -v --tb=short -x"
-#        continue-on-error: true
-#        id: unit-tests
-#
-#      - name: Run import tests
-#        run: |
-#          docker run --rm \
-#            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
-#            python -c "import mlc_llm, tvm; print('✓ MLC-LLM version:', mlc_llm.__version__); print('✓ TVM version:', tvm.__version__); print('✓ All imports successful')"
-#
-#      - name: Verify CLI functionality
-#        run: |
-#          docker run --rm \
-#            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
-#            mlc_llm --help
-#
-#      - name: Test summary
-#        run: |
-#          echo "### Test Results ✅" >> $GITHUB_STEP_SUMMARY
-#          echo "" >> $GITHUB_STEP_SUMMARY
-#          echo "- ✅ Import tests passed" >> $GITHUB_STEP_SUMMARY
-#          echo "- ✅ CLI verification passed" >> $GITHUB_STEP_SUMMARY
-#          if [ "${{ steps.unit-tests.outcome }}" == "success" ]; then
-#            echo "- ✅ Unit tests passed" >> $GITHUB_STEP_SUMMARY
-#          else
-#            echo "- ⚠️  Unit tests skipped (some tests may require GPU)" >> $GITHUB_STEP_SUMMARY
-#          fi
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull Docker image
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Run unit tests
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/test-workspace \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+            bash -c "cd /workspace/mlc-llm && pytest tests/python/ -v --tb=short -x"
+        continue-on-error: true
+        id: unit-tests
+
+      - name: Run import tests
+        run: |
+          docker run --rm \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+            python -c "import mlc_llm, tvm; print('✓ MLC-LLM version:', mlc_llm.__version__); print('✓ TVM version:', tvm.__version__); print('✓ All imports successful')"
+
+      - name: Verify CLI functionality
+        run: |
+          docker run --rm \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+            mlc_llm --help
+
+      - name: Test summary
+        run: |
+          echo "### Test Results ✅" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Import tests passed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ CLI verification passed" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.unit-tests.outcome }}" == "success" ]; then
+            echo "- ✅ Unit tests passed" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- ⚠️  Unit tests skipped (some tests may require GPU)" >> $GITHUB_STEP_SUMMARY
+          fi
 
   # ===========================================================================
   # JOB 3: BUILD LINUX WHEEL (x64)
@@ -227,129 +227,115 @@ jobs:
       - name: Clone MLC-LLM
         run: git clone --recursive https://github.com/mlc-ai/mlc-llm.git
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-      - name: Deep debug repo structure
-        shell: pwsh
+      - name: Install Python dependencies
         run: |
-          Write-Host "===== CURRENT PATH ====="
+          python -m pip install --upgrade pip setuptools wheel
+          pip install cmake ninja numpy torch transformers pytest packaging
+          pip install --pre -U -f https://mlc.ai/wheels mlc-ai-nightly-cpu
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install LLVM and Set LLVM in PATH
+        run: |
+          choco install llvm -y
+          echo "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Configure and Build
+        run: |
           dir
+          # Verify we're in the right place
+          if (-not (Test-Path "mlc-llm/CMakeLists.txt")) {
+            Write-Error "mlc-llm/CMakeLists.txt not found! You must run this in the mlc-llm repository."
+            Get-ChildItem
+            exit 1
+          }
+          Write-Host "✅ mlc-llm/CMakeLists.txt found"
+          
+          Push-Location mlc-llm
+          
+          # Create build directory
+          if (Test-Path "build") { Remove-Item -Recurse -Force build }
+          New-Item -ItemType Directory -Path build | Out-Null
 
-          Write-Host "`n===== ROOT CONTENTS ====="
-          cd mlc-llm
-          dir
+          # Create config.cmake in build directory
+          Push-Location build
 
+          $config = @"
+          set(CMAKE_BUILD_TYPE RelWithDebInfo)
+          set(USE_LLVM "C:/Program Files/LLVM")
+          set(HIDE_PRIVATE_SYMBOLS ON)
+          set(USE_CUDA OFF)
+          set(USE_METAL OFF)
+          set(USE_VULKAN OFF)
+          set(USE_OPENCL OFF)
+          set(USE_ROCM OFF)
+          "@
 
-#
-#
-#      - name: Set up Python
-#        uses: actions/setup-python@v5
-#        with:
-#          python-version: "3.11"
-#
-#      - name: Install Python dependencies
-#        run: |
-#          python -m pip install --upgrade pip setuptools wheel
-#          pip install cmake ninja numpy torch transformers pytest packaging
-#          pip install --pre -U -f https://mlc.ai/wheels mlc-ai-nightly-cpu
-#
-#      - name: Install Rust
-#        uses: dtolnay/rust-toolchain@stable
-#
-#      - name: Install LLVM and Set LLVM in PATH
-#        run: |
-#          choco install llvm -y
-#          echo "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-#
-#      - name: Configure and Build
-#        run: |
-#          # Verify we're in the right place
-#          if (-not (Test-Path "mlc-llm/CMakeLists.txt")) {
-#            Write-Error "mlc-llm/CMakeLists.txt not found! You must run this in the mlc-llm repository."
-#            Get-ChildItem
-#            exit 1
-#          }
-#
-#          Write-Host "✅ mlc-llm/CMakeLists.txt found"
-#
-#          Push-Location mlc-llm
-#
-#          # Create build directory
-#          if (Test-Path "build") { Remove-Item -Recurse -Force build }
-#          New-Item -ItemType Directory -Path build | Out-Null
-#
-#          # Create config.cmake in build directory
-#          Push-Location build
-#
-#          $config = @"
-#          set(CMAKE_BUILD_TYPE RelWithDebInfo)
-#          set(USE_LLVM "C:/Program Files/LLVM")
-#          set(HIDE_PRIVATE_SYMBOLS ON)
-#          set(USE_CUDA OFF)
-#          set(USE_METAL OFF)
-#          set(USE_VULKAN OFF)
-#          set(USE_OPENCL OFF)
-#          set(USE_ROCM OFF)
-#          "@
-#
-#          $config | Out-File -FilePath "config.cmake" -Encoding ASCII
-#
-#          Write-Host "`nConfig file created:"
-#          Get-Content config.cmake
-#
-#          # Run CMake from build directory, pointing to parent
-#          Write-Host "`nRunning CMake..."
-#          Write-Host "CMake source dir: .."
-#          Write-Host "CMake build dir: $PWD"
-#
-#          cmake -G "Visual Studio 17 2022" -A x64 ..
-#          if ($LASTEXITCODE -ne 0) {
-#            Write-Error "CMake configuration failed!"
-#            Pop-Location
-#            exit 1
-#          }
-#
-#          Write-Host "`nBuilding..."
-#          cmake --build . --config Release --parallel 4
-#          if ($LASTEXITCODE -ne 0) {
-#            Write-Error "Build failed!"
-#            Pop-Location
-#            exit 1
-#          }
-#
-#          Pop-Location
-#          Write-Host "✅ Build completed"
-#
-#      - name: Build Python wheel
-#        run: |
-#          if (-not (Test-Path "python\setup.py")) {
-#            Write-Error "python/setup.py not found!"
-#            exit 1
-#          }
-#
-#          Push-Location python
-#          python setup.py bdist_wheel
-#          Pop-Location
-#
-#          Write-Host "`n✅ Wheel created:"
-#          Get-ChildItem python\dist\*.whl
-#
-#      - name: Upload Windows wheel
-#        uses: actions/upload-artifact@v4
-#        with:
-#          name: mlc-llm-windows-x64-wheel
-#          path: python/dist/*.whl
-#          retention-days: 30
-#
-#      - name: Build summary
-#        run: |
-#          $wheel = Get-ChildItem python\dist\*.whl | Select-Object -First 1
-#          @"
-#          ### Windows Wheel Built ✅
-#
-#          **Platform:** Windows x86_64
-#          **File:** $($wheel.Name)
-#          **Size:** $([math]::Round($wheel.Length/1MB, 2)) MB
-#          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          $config | Out-File -FilePath "config.cmake" -Encoding ASCII
+
+          Write-Host "`nConfig file created:"
+          Get-Content config.cmake
+
+          # Run CMake from build directory, pointing to parent
+          Write-Host "`nRunning CMake..."
+          Write-Host "CMake source dir: .."
+          Write-Host "CMake build dir: $PWD"
+
+          cmake -G "Visual Studio 17 2022" -A x64 ..
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "CMake configuration failed!"
+            Pop-Location
+            exit 1
+          }
+
+          Write-Host "`nBuilding..."
+          cmake --build . --config Release --parallel 4
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Build failed!"
+            Pop-Location
+            exit 1
+          }
+
+          Pop-Location
+          Write-Host "✅ Build completed"
+
+      - name: Build Python wheel
+        run: |
+          if (-not (Test-Path "python\setup.py")) {
+            Write-Error "python/setup.py not found!"
+            exit 1
+          }
+          
+          Push-Location python
+          python setup.py bdist_wheel
+          Pop-Location
+          
+          Write-Host "`n✅ Wheel created:"
+          Get-ChildItem python\dist\*.whl
+
+      - name: Upload Windows wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: mlc-llm-windows-x64-wheel
+          path: python/dist/*.whl
+          retention-days: 30
+
+      - name: Build summary
+        run: |
+          $wheel = Get-ChildItem python\dist\*.whl | Select-Object -First 1
+          @"
+          ### Windows Wheel Built ✅
+          
+          **Platform:** Windows x86_64
+          **File:** $($wheel.Name)
+          **Size:** $([math]::Round($wheel.Length/1MB, 2)) MB
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
   # ===========================================================================
   # JOB 5: PUBLISH RELEASE
