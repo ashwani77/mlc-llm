@@ -126,6 +126,8 @@ RUN cmake .. && echo "✓ CMake configuration completed"
 # Build MLC-LLM libraries (limited parallelism to avoid OOM)
 RUN make -j4 && echo "✓ MLC-LLM libraries built successfully"
 
+WORKDIR /workspace/mlc-llm/build
+
 # Verify build outputs
 RUN ls -lh libmlc_llm.so libtvm_runtime.so && echo "✓ Build artifacts verified"
 
