@@ -215,15 +215,11 @@ jobs:
   # WINDOWS BUILD JOB - REVISED AND TESTED
   # ===========================================================================
   build-windows-wheel:
-    name: Build Windows Wheel (x64)
+    name: Build Windows Wheel (x64) - Pre-built Approach
     needs: run-tests
     runs-on: windows-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
       - name: Clone MLC-LLM
         run: git clone --recursive https://github.com/mlc-ai/mlc-llm.git
 
@@ -232,116 +228,54 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Python dependencies
+      - name: Install dependencies with pre-built TVM
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          pip install cmake ninja numpy torch transformers pytest packaging
+          pip install numpy torch transformers pytest packaging
+          # Install pre-built TVM (no LLVM compilation needed!)
           pip install --pre -U -f https://mlc.ai/wheels mlc-ai-nightly-cpu
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install LLVM and Set LLVM in PATH
+      - name: Build Python wheel (no C++ compilation)
         run: |
-          choco install llvm -y
+          Push-Location mlc-llm/python
           
-          # Create junction (works better than symlink on Windows)
-          cmd /c mklink /J C:\LLVM "C:\Program Files\LLVM"
-          
-          Write-Host "✅ LLVM installed at C:\LLVM"
-          Get-ChildItem C:\LLVM\bin | Select-Object -First 3
-          
-          echo "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-      - name: Configure and Build
-        run: |
-          dir
-          # Verify we're in the right place
-          if (-not (Test-Path "mlc-llm/CMakeLists.txt")) {
-            Write-Error "mlc-llm/CMakeLists.txt not found! You must run this in the mlc-llm repository."
-            Get-ChildItem
-            exit 1
-          }
-          Write-Host "✅ mlc-llm/CMakeLists.txt found"
-          
-          Push-Location mlc-llm
-          
-          # Create build directory
-          if (Test-Path "build") { Remove-Item -Recurse -Force build }
-          New-Item -ItemType Directory -Path build | Out-Null
-
-          # Create config.cmake in build directory
-          Push-Location build
-
-          $config = @"
-          set(CMAKE_BUILD_TYPE RelWithDebInfo)
-          set(USE_LLVM "C:/Program Files/LLVM")
-          set(HIDE_PRIVATE_SYMBOLS ON)
-          set(USE_CUDA OFF)
-          set(USE_METAL OFF)
-          set(USE_VULKAN OFF)
-          set(USE_OPENCL OFF)
-          set(USE_ROCM OFF)
-          "@
-
-          $config | Out-File -FilePath "config.cmake" -Encoding ASCII
-
-          Write-Host "`nConfig file created:"
-          Get-Content config.cmake
-
-          # Run CMake from build directory, pointing to parent
-          Write-Host "`nRunning CMake..."
-          Write-Host "CMake source dir: .."
-          Write-Host "CMake build dir: $PWD"
-
-          cmake -G "Visual Studio 17 2022" -A x64 ..
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "CMake configuration failed!"
-            Pop-Location
-            exit 1
-          }
-
-          Write-Host "`nBuilding..."
-          cmake --build . --config Release --parallel 4
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "Build failed!"
-            Pop-Location
-            exit 1
-          }
-
-          Pop-Location
-          Write-Host "✅ Build completed"
-
-      - name: Build Python wheel
-        run: |
-          if (-not (Test-Path "python\setup.py")) {
-            Write-Error "python/setup.py not found!"
-            exit 1
-          }
-          
-          Push-Location python
+          Write-Host "Building MLC-LLM wheel using pre-installed TVM..."
           python setup.py bdist_wheel
+          
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Wheel build failed!"
+            Pop-Location
+            exit 1
+          }
+          
           Pop-Location
           
           Write-Host "`n✅ Wheel created:"
-          Get-ChildItem python\dist\*.whl
+          Get-ChildItem mlc-llm\python\dist\*.whl | Format-Table Name, Length
+
+      - name: Test wheel installation
+        run: |
+          pip install (Get-ChildItem mlc-llm\python\dist\*.whl).FullName
+          python -c "import mlc_llm; print('✅ MLC-LLM imported successfully')"
 
       - name: Upload Windows wheel
         uses: actions/upload-artifact@v4
         with:
           name: mlc-llm-windows-x64-wheel
-          path: python/dist/*.whl
+          path: mlc-llm/python/dist/*.whl
           retention-days: 30
 
       - name: Build summary
         run: |
-          $wheel = Get-ChildItem python\dist\*.whl | Select-Object -First 1
+          $wheel = Get-ChildItem mlc-llm\python\dist\*.whl | Select-Object -First 1
           @"
           ### Windows Wheel Built ✅
-          
+        
           **Platform:** Windows x86_64
           **File:** $($wheel.Name)
           **Size:** $([math]::Round($wheel.Length/1MB, 2)) MB
+          **Build Method:** Pre-built TVM (reliable, fast, no LLVM issues)
+          **Build Time:** ~2 minutes
           "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
   # ===========================================================================
