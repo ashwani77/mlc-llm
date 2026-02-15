@@ -1,5 +1,5 @@
-# Multi-purpose Docker image for MLC-LLM with manually installed CUDA
-# Built on clean Ubuntu 22.04 with full control over CUDA components
+# Multi-purpose Docker image for MLC-LLM (CPU-only for faster CI/CD)
+# Can be used for both development (interactive) and building (CI/CD)
 
 FROM ubuntu:22.04
 
@@ -10,7 +10,7 @@ ENV TZ=UTC
 # Set up timezone
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# Install basic dependencies
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
@@ -21,14 +21,6 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     python3-dev \
-    software-properties-common \
-    gnupg2 \
-    ca-certificates \
-    nvidia-cuda-toolkit \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install additional system dependencies
-RUN apt-get update && apt-get install -y \
     libssl-dev \
     libffi-dev \
     libbz2-dev \
@@ -52,15 +44,19 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 # Upgrade pip
 RUN python -m pip install --upgrade pip setuptools wheel
 
-# Install Rust (required for tokenizers)
+# Install Rust (required for Hugging Face tokenizers)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-# Install LLVM 17
-RUN wget https://apt.llvm.org/llvm.sh && \
-    chmod +x llvm.sh && \
-    ./llvm.sh 17 && \
-    rm llvm.sh
+# Install LLVM 17 (required for TVM)
+RUN apt-get update && apt-get install -y \
+    software-properties-common \
+    gpg-agent \
+    && wget https://apt.llvm.org/llvm.sh \
+    && chmod +x llvm.sh \
+    && ./llvm.sh 17 \
+    && rm llvm.sh \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set LLVM environment variables
 ENV LLVM_CONFIG=/usr/bin/llvm-config-17
@@ -72,6 +68,7 @@ WORKDIR /workspace
 # Clone MLC-LLM repository
 RUN git clone --recursive https://github.com/mlc-ai/mlc-llm.git /workspace/mlc-llm
 
+# Set MLC-LLM source directory
 ENV MLC_LLM_SOURCE_DIR=/workspace/mlc-llm
 
 # Install Python dependencies
@@ -87,14 +84,13 @@ RUN pip install --no-cache-dir \
     psutil \
     typing_extensions
 
-# Install TVM with CUDA support
-RUN pip install --pre -U -f https://mlc.ai/wheels mlc-ai-nightly-cu121
+# Install TVM (CPU-only version is faster to install)
+RUN pip install --pre -U -f https://mlc.ai/wheels mlc-ai-nightly-cpu
 
-# Build MLC-LLM
+# Build MLC-LLM with CPU-only configuration
 WORKDIR /workspace/mlc-llm
 RUN mkdir -p build
 
-# Create cmake config with full CUDA support
 RUN cd build && \
     echo 'set(CMAKE_BUILD_TYPE RelWithDebInfo)' > config.cmake && \
     echo 'set(CMAKE_EXPORT_COMPILE_COMMANDS ON)' >> config.cmake && \
@@ -111,43 +107,40 @@ RUN cd build && \
     echo 'set(USE_VULKAN OFF)' >> config.cmake && \
     echo 'set(USE_ROCM OFF)' >> config.cmake && \
     cmake .. && \
-    echo "✓ CMake configuration completed successfully"
 
-# Build with limited parallelism
-RUN cd build && \
-    make -j 4 || { \
+    cmake .. && \
+    make -j4 VERBOSE=1 || { \
         echo "===================================="; \
         echo "BUILD FAILED - Error details above"; \
         echo "===================================="; \
         exit 1; \
     } && \
-    echo "✓ Build completed successfully"
+    echo "Build completed successfully"
 
 # Install MLC-LLM Python package
 WORKDIR /workspace/mlc-llm/python
 RUN pip install -e . && \
-    echo "✓ MLC-LLM Python package installed"
+    echo "MLC-LLM Python package installed"
 
 # Verify installation
 RUN python -c "import mlc_llm; print('✓ MLC-LLM imported successfully')" && \
     (mlc_llm --help || python -m mlc_llm --help) && \
     echo "✓ MLC-LLM CLI verified"
 
-# Verify CUDA is available
-RUN python -c "import torch; print('✓ CUDA available:', torch.cuda.is_available())" || \
-    echo "⚠ CUDA not available (this is OK for building, runtime needs GPU)"
-
-# Set working directory
+# Set working directory back to workspace
 WORKDIR /workspace
 
 # Copy entrypoint script
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# Set entrypoint
 ENTRYPOINT ["/entrypoint.sh"]
+
+# Default command
 CMD []
 
 # Labels
 LABEL org.opencontainers.image.source=https://github.com/mlc-ai/mlc-llm
-LABEL org.opencontainers.image.description="MLC-LLM with full CUDA 12.1 support (manual installation)"
+LABEL org.opencontainers.image.description="Multi-purpose MLC-LLM builder (CPU-only)"
 LABEL org.opencontainers.image.licenses=Apache-2.0
