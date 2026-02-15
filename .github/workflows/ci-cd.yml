@@ -222,8 +222,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
+
+      # New (gets MLC-LLM source)
+      - name: Get MLC-LLM source
+        run: |
+          git clone --recursive https://github.com/mlc-ai/mlc-llm.git
+          Set-Location mlc-llm
 
       - name: Set up Python
         uses: actions/setup-python@v5
