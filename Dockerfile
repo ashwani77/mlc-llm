@@ -118,7 +118,7 @@ RUN mkdir -p build
 WORKDIR /workspace/mlc-llm/build
 
 # Generate build configuration (CPU-only for reliability)
-RUN printf "y\ny\nn\nn\nn\nn\nn\n" | python ../cmake/gen_cmake_config.py
+RUN printf "\ny\nn\nn\nn\nn\nn\nn\n" | python ../cmake/gen_cmake_config.py
 
 # Run CMake configuration
 RUN cmake .. && echo "✓ CMake configuration completed"
