@@ -224,7 +224,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-
+      - name: Debug working directory
+        run: |
+          pwd
+          dir
+          
       - name: Debug - Show repository structure
         run: |
           Write-Host "Current directory:"
