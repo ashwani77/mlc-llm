@@ -36,11 +36,11 @@ jobs:
     permissions:
       contents: read
       packages: write
-
+    
     outputs:
       image-tag: ${{ steps.meta.outputs.tags }}
       image-digest: ${{ steps.build.outputs.digest }}
-
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -75,7 +75,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile
+          file: ./docker/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -104,7 +104,7 @@ jobs:
     permissions:
       contents: read
       packages: read
-
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -133,7 +133,13 @@ jobs:
         run: |
           docker run --rm \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
-            python -c "import mlc_llm, tvm; print('✓ MLC-LLM version:', mlc_llm.__version__); print('✓ TVM version:', tvm.__version__); print('✓ All imports successful')"
+            python -c "
+import mlc_llm
+import tvm
+print('✓ MLC-LLM version:', mlc_llm.__version__)
+print('✓ TVM version:', tvm.__version__)
+print('✓ All imports successful')
+"
 
       - name: Verify CLI functionality
         run: |
@@ -163,7 +169,7 @@ jobs:
     permissions:
       contents: read
       packages: read
-
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -212,13 +218,13 @@ jobs:
           echo "**Artifacts:** $(ls dist/*.whl)" >> $GITHUB_STEP_SUMMARY
 
   # ===========================================================================
-  # WINDOWS BUILD JOB - REVISED AND TESTED
+  # JOB 4: BUILD WINDOWS WHEEL (x64)
   # ===========================================================================
   build-windows-wheel:
     name: Build Windows Wheel (x64)
     needs: run-tests
     runs-on: windows-latest
-
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -230,49 +236,40 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install Python build dependencies
-        shell: pwsh
+      - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
           pip install cmake ninja
           pip install --pre -U -f https://mlc.ai/wheels mlc-ai-nightly-cpu
-          pip install numpy torch transformers pytest packaging
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install LLVM
-        shell: pwsh
         run: |
-          choco install llvm -y
-
+          choco install llvm --version=17.0.6 -y
+          
       - name: Set LLVM environment variables
-        shell: pwsh
         run: |
           echo "LLVM_DIR=C:\Program Files\LLVM" >> $env:GITHUB_ENV
           echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+        shell: pwsh
 
       - name: Verify build tools
-        shell: pwsh
         run: |
-          Write-Host "Python version:"
           python --version
-          Write-Host "`nCMake version:"
           cmake --version
-          Write-Host "`nRust version:"
           rustc --version
-          Write-Host "`nClang version:"
           clang --version
-          Write-Host "`nClang location:"
           where clang
 
-      - name: Create build directory and config
+      - name: Configure MLC-LLM build
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path build
           Set-Location build
-
-          Write-Host "Creating config.cmake..."
+          
+          # Create config.cmake manually (Windows doesn't have llvm-config.exe)
           @"
           set(CMAKE_BUILD_TYPE RelWithDebInfo)
           set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -284,33 +281,26 @@ jobs:
           set(USE_OPENCL OFF)
           set(USE_ROCM OFF)
           "@ | Out-File -FilePath config.cmake -Encoding UTF8
-
-          Write-Host "config.cmake created:"
-          Get-Content config.cmake
-
-      - name: Run CMake configuration
-        shell: pwsh
-        run: |
-          Set-Location build
-          Write-Host "Running CMake configuration..."
+          
+          # Run CMake
           cmake ..
 
       - name: Build MLC-LLM
         shell: pwsh
         run: |
           Set-Location build
-          Write-Host "Building MLC-LLM (this may take 15-20 minutes)..."
           cmake --build . --config Release --parallel 4
 
       - name: Build Python wheel
         shell: pwsh
         run: |
           Set-Location python
-          Write-Host "Building Python wheel..."
           python setup.py bdist_wheel
 
-          Write-Host "`nWheel created:"
-          Get-ChildItem dist\*.whl
+      - name: List built wheels
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path python\dist -Filter *.whl | Format-Table Name, Length
 
       - name: Upload Windows wheel
         uses: actions/upload-artifact@v4
@@ -323,13 +313,10 @@ jobs:
         shell: pwsh
         run: |
           $wheel = Get-ChildItem -Path python\dist -Filter *.whl | Select-Object -First 1
-          @"
-          ### Windows Wheel Built ✅
-
-          **Platform:** Windows x86_64
-          **Artifacts:** $($wheel.Name)
-          **Size:** $([math]::Round($wheel.Length / 1MB, 2)) MB
-          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "### Windows Wheel Built ✅" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "**Platform:** Windows x86_64" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "**Artifacts:** $($wheel.Name)" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
   # ===========================================================================
   # JOB 5: PUBLISH RELEASE
@@ -342,7 +329,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
-
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -445,7 +432,7 @@ jobs:
     needs: [build-docker-image, run-tests, build-linux-wheel, build-windows-wheel]
     runs-on: ubuntu-latest
     if: always()
-
+    
     steps:
       - name: Generate summary
         run: |
