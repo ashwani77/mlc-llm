@@ -226,8 +226,7 @@ jobs:
           submodules: recursive
       - name: Clone MLC-LLM
         run: git clone --recursive https://github.com/mlc-ai/mlc-llm.git
-        with:
-          submodules: recursive
+
 
       - name: Deep debug repo structure
         shell: pwsh
@@ -248,6 +247,16 @@ jobs:
         run: |
           pwd
           dir
+
+      - name: Debug - Show repository structure
+        run: |
+          Write-Host "Current directory:"
+          Get-Location
+          Write-Host "`nFiles in root:"
+          Get-ChildItem | Format-Table Name
+          Write-Host "`nChecking for CMakeLists.txt:"
+          Test-Path "CMakeLists.txt"
+      
 
       - name: Set up Python
         uses: actions/setup-python@v5
