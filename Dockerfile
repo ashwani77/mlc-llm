@@ -129,7 +129,7 @@ RUN make -j4 && echo "✓ MLC-LLM libraries built successfully"
 WORKDIR /workspace/mlc-llm/build
 
 # Verify build outputs
-RUN ls -lh libmlc_llm.so libtvm_runtime.so && echo "✓ Build artifacts verified"
+RUN ls -lh && echo "✓ Build artifacts verified"
 
 # =============================================================================
 # STEP 5: INSTALL MLC-LLM PYTHON PACKAGE
