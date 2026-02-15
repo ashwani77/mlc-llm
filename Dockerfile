@@ -18,6 +18,24 @@ RUN pip install --pre -U -f https://mlc.ai/wheels \
     mlc-llm-nightly-cu121 \
     cmake
 
+RUN apt-get update && apt-get install -y \
+    wget \
+    gnupg \
+    lsb-release \
+    software-properties-common \
+    && wget https://apt.llvm.org/llvm.sh \
+    && chmod +x llvm.sh \
+    && ./llvm.sh 17 \
+    && apt-get install -y \
+       llvm-17 \
+       llvm-17-dev \
+       llvm-17-tools \
+       libllvm17 \
+    && rm llvm.sh \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN llvm-config-17 --version
+RUN llvm-config-17 --libfiles
 #
 # FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
 #
@@ -142,7 +160,7 @@ RUN cd build && \
 
 # Build with LIMITED parallelism to avoid memory exhaustion
 RUN cd build && \
-    make -j4 VERBOSE=1 || { \
+    make -j2 VERBOSE=1 || { \
         echo "===================================="; \
         echo "BUILD FAILED - Error details above"; \
         echo "===================================="; \
