@@ -243,21 +243,11 @@ jobs:
 
           Write-Host "`n===== SEARCHING FOR cpp FOLDER ====="
           Get-ChildItem -Recurse -Directory -Filter cpp -ErrorAction SilentlyContinue
-          
+
       - name: Debug working directory
         run: |
           pwd
           dir
-
-      - name: Debug - Show repository structure
-        run: |
-          Write-Host "Current directory:"
-          Get-Location
-          Write-Host "`nFiles in root:"
-          Get-ChildItem | Format-Table Name
-          Write-Host "`nChecking for CMakeLists.txt:"
-          Test-Path "CMakeLists.txt"
-      
 
       - name: Set up Python
         uses: actions/setup-python@v5
