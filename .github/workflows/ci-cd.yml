@@ -241,16 +241,21 @@ jobs:
 
       - name: Install LLVM
         run: |
-          dir "C:\Program Files\LLVM\bin"
-          choco install llvm -y
+          choco install llvm --version=17.0.6 -y
+
+      - name: Set LLVM environment variables
+        run: |
+          echo "LLVM_DIR=C:\Program Files\LLVM" >> $env:GITHUB_ENV
           echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+        shell: pwsh
 
       - name: Verify build tools
         run: |
           python --version
           cmake --version
           rustc --version
-          llvm-config --version
+          clang --version
+          where clang
 
       - name: Configure MLC-LLM build
         shell: bash

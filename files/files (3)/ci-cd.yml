@@ -134,12 +134,12 @@ jobs:
           docker run --rm \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
             python -c "
-              import mlc_llm
-              import tvm
-              print('✓ MLC-LLM version:', mlc_llm.__version__)
-              print('✓ TVM version:', tvm.__version__)
-              print('✓ All imports successful')
-              "
+import mlc_llm
+import tvm
+print('✓ MLC-LLM version:', mlc_llm.__version__)
+print('✓ TVM version:', tvm.__version__)
+print('✓ All imports successful')
+"
 
       - name: Verify CLI functionality
         run: |
@@ -248,28 +248,37 @@ jobs:
       - name: Install LLVM
         run: |
           choco install llvm --version=17.0.6 -y
-          echo "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          
+      - name: Set LLVM environment variables
+        run: |
+          echo "LLVM_DIR=C:\Program Files\LLVM" >> $env:GITHUB_ENV
+          echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+        shell: pwsh
 
       - name: Verify build tools
         run: |
           python --version
           cmake --version
           rustc --version
-          llvm-config --version
+          clang --version
+          where clang
 
       - name: Configure MLC-LLM build
         shell: bash
         run: |
           mkdir -p build
           cd build
-          python ../cmake/gen_cmake_config.py << 'EOF'
-          y
-          y
-          n
-          n
-          n
-          n
-          n
+          # Create config manually for Windows (llvm-config doesn't exist)
+          cat > config.cmake << 'EOF'
+          set(CMAKE_BUILD_TYPE RelWithDebInfo)
+          set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+          set(USE_LLVM "C:/Program Files/LLVM")
+          set(HIDE_PRIVATE_SYMBOLS ON)
+          set(USE_CUDA OFF)
+          set(USE_METAL OFF)
+          set(USE_VULKAN OFF)
+          set(USE_OPENCL OFF)
+          set(USE_ROCM OFF)
           EOF
           cmake ..
 
