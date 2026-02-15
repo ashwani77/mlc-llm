@@ -224,6 +224,26 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+      - name: Clone MLC-LLM
+        run: git clone --recursive https://github.com/mlc-ai/mlc-llm.git
+        with:
+          submodules: recursive
+
+      - name: Deep debug repo structure
+        shell: pwsh
+        run: |
+          Write-Host "===== CURRENT PATH ====="
+          Get-Location
+
+          Write-Host "`n===== ROOT CONTENTS ====="
+          Get-ChildItem -Force
+
+          Write-Host "`n===== SEARCHING FOR CMakeLists.txt ====="
+          Get-ChildItem -Recurse -Filter CMakeLists.txt -ErrorAction SilentlyContinue
+
+          Write-Host "`n===== SEARCHING FOR cpp FOLDER ====="
+          Get-ChildItem -Recurse -Directory -Filter cpp -ErrorAction SilentlyContinue
+          
       - name: Debug working directory
         run: |
           pwd
@@ -237,6 +257,7 @@ jobs:
           Get-ChildItem | Format-Table Name
           Write-Host "`nChecking for CMakeLists.txt:"
           Test-Path "CMakeLists.txt"
+      
 
       - name: Set up Python
         uses: actions/setup-python@v5
