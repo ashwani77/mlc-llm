@@ -235,7 +235,7 @@ jobs:
           dir
 
           Write-Host "`n===== ROOT CONTENTS ====="
-          cd ..
+          cd mlc-llm
           dir
 
 
