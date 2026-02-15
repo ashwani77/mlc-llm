@@ -241,6 +241,7 @@ jobs:
 
       - name: Install LLVM
         run: |
+          dir "C:\Program Files\LLVM\bin"
           choco install llvm -y
           echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
 
