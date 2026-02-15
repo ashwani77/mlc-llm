@@ -228,7 +228,7 @@ jobs:
         run: |
           pwd
           dir
-          
+
       - name: Debug - Show repository structure
         run: |
           Write-Host "Current directory:"
@@ -262,14 +262,16 @@ jobs:
       - name: Configure and Build
         run: |
           # Verify we're in the right place
-          if (-not (Test-Path "CMakeLists.txt")) {
-            Write-Error "CMakeLists.txt not found! You must run this in the mlc-llm repository."
+          if (-not (Test-Path "cpp/CMakeLists.txt")) {
+            Write-Error "cpp/CMakeLists.txt not found! You must run this in the mlc-llm repository."
             Get-ChildItem
             exit 1
           }
 
-          Write-Host "✅ CMakeLists.txt found"
-
+          Write-Host "✅ cpp/CMakeLists.txt found"
+          
+          Push-Location cpp
+          
           # Create build directory
           if (Test-Path "build") { Remove-Item -Recurse -Force build }
           New-Item -ItemType Directory -Path build | Out-Null
