@@ -1,66 +1,95 @@
-# Multi-purpose Docker image for MLC-LLM (CPU-only for faster CI/CD)
+# Multi-purpose Docker image for MLC-LLM with CUDA support
 # Can be used for both development (interactive) and building (CI/CD)
 
-FROM ubuntu:22.04
+FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
 
-# Prevent interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
-ENV TZ=UTC
 
-# Set up timezone
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
-
-# Install system dependencies
 RUN apt-get update && apt-get install -y \
-    build-essential \
-    cmake \
-    git \
-    wget \
-    curl \
-    ninja-build \
-    python3 \
-    python3-pip \
-    python3-dev \
-    libssl-dev \
-    libffi-dev \
-    libbz2-dev \
-    libreadline-dev \
-    libsqlite3-dev \
-    libncurses5-dev \
-    libncursesw5-dev \
-    xz-utils \
-    tk-dev \
-    libxml2-dev \
-    libxmlsec1-dev \
-    liblzma-dev \
-    vim \
-    nano \
-    htop \
+    python3 python3-pip git curl build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Create symbolic link for python
 RUN ln -s /usr/bin/python3 /usr/bin/python
+RUN python -m pip install --upgrade pip
 
-# Upgrade pip
-RUN python -m pip install --upgrade pip setuptools wheel
+# Install prebuilt CUDA TVM + MLC
+RUN pip install --pre -U -f https://mlc.ai/wheels \
+    mlc-ai-nightly-cu121 \
+    mlc-llm-nightly-cu121
 
-# Install Rust (required for Hugging Face tokenizers)
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
-
-# Install LLVM 17 (required for TVM)
-RUN apt-get update && apt-get install -y \
-    software-properties-common \
-    gpg-agent \
-    && wget https://apt.llvm.org/llvm.sh \
-    && chmod +x llvm.sh \
-    && ./llvm.sh 17 \
-    && rm llvm.sh \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set LLVM environment variables
-ENV LLVM_CONFIG=/usr/bin/llvm-config-17
-ENV LLVM_HOME=/usr/lib/llvm-17
+#
+# FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
+#
+# # Prevent interactive prompts during package installation
+# ENV DEBIAN_FRONTEND=noninteractive
+# ENV TZ=UTC
+#
+# # Set up timezone
+# RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+#
+# # Install cuDNN (required for CUDA builds)
+# RUN apt-get update && apt-get install -y \
+#     libcudnn8 \
+#     libcudnn8-dev \
+#     && rm -rf /var/lib/apt/lists/*
+#
+# # Install system dependencies
+# RUN apt-get update && apt-get install -y \
+#     build-essential \
+#     cmake \
+#     git \
+#     wget \
+#     curl \
+#     ninja-build \
+#     python3 \
+#     python3-pip \
+#     python3-dev \
+#     libssl-dev \
+#     libffi-dev \
+#     libbz2-dev \
+#     libreadline-dev \
+#     libsqlite3-dev \
+#     libncurses5-dev \
+#     libncursesw5-dev \
+#     xz-utils \
+#     tk-dev \
+#     libxml2-dev \
+#     libxmlsec1-dev \
+#     liblzma-dev \
+#     vim \
+#     nano \
+#     htop \
+#     cuda-toolkit-12-1 \
+#     && rm -rf /var/lib/apt/lists/*
+#
+# # Create symbolic link for python
+# RUN ln -s /usr/bin/python3 /usr/bin/python
+#
+# # Upgrade pip
+# RUN python -m pip install --upgrade pip setuptools wheel
+#
+# # Install Rust (required for Hugging Face tokenizers)
+# RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+# ENV PATH="/root/.cargo/bin:${PATH}"
+#
+# # Install LLVM 17 (required for TVM)
+# RUN apt-get update && apt-get install -y \
+#     software-properties-common \
+#     gpg-agent \
+#     && wget https://apt.llvm.org/llvm.sh \
+#     && chmod +x llvm.sh \
+#     && ./llvm.sh 17 \
+#     && rm llvm.sh \
+#     && rm -rf /var/lib/apt/lists/*
+#
+# # Set LLVM environment variables
+# ENV LLVM_CONFIG=/usr/bin/llvm-config-17
+# ENV LLVM_HOME=/usr/lib/llvm-17
+#
+# # Set CUDA environment variables
+# ENV CUDA_HOME=/usr/local/cuda
+# ENV PATH=${CUDA_HOME}/bin:${PATH}
+# ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
 
 # Create working directory
 WORKDIR /workspace
@@ -84,13 +113,14 @@ RUN pip install --no-cache-dir \
     psutil \
     typing_extensions
 
-# Install TVM (CPU-only version is faster to install)
-RUN pip install --pre -U -f https://mlc.ai/wheels mlc-ai-nightly-cpu
+# Install TVM with CUDA support
+#RUN pip install --pre -U -f https://mlc.ai/wheels mlc-ai-nightly-cu121
 
-# Build MLC-LLM with CPU-only configuration
+# Build MLC-LLM with proper configuration
 WORKDIR /workspace/mlc-llm
 RUN mkdir -p build
 
+# Create cmake config file - SIMPLIFIED to avoid cuDNN issues
 RUN cd build && \
     echo 'set(CMAKE_BUILD_TYPE RelWithDebInfo)' > config.cmake && \
     echo 'set(CMAKE_EXPORT_COMPILE_COMMANDS ON)' >> config.cmake && \
@@ -98,17 +128,19 @@ RUN cd build && \
     echo 'set(HIDE_PRIVATE_SYMBOLS ON)' >> config.cmake && \
     echo 'set(USE_CUDA ON)' >> config.cmake && \
     echo 'set(USE_CUBLAS ON)' >> config.cmake && \
-    echo 'set(USE_CUDNN ON)' >> config.cmake && \
-    echo 'set(USE_CUTLASS ON)' >> config.cmake && \
-    echo 'set(USE_FLASHINFER ON)' >> config.cmake && \
+    echo 'set(USE_CUDNN OFF)' >> config.cmake && \
+    echo 'set(USE_CUTLASS OFF)' >> config.cmake && \
+    echo 'set(USE_FLASHINFER OFF)' >> config.cmake && \
     echo 'set(USE_THRUST ON)' >> config.cmake && \
     echo 'set(USE_OPENCL OFF)' >> config.cmake && \
     echo 'set(USE_METAL OFF)' >> config.cmake && \
     echo 'set(USE_VULKAN OFF)' >> config.cmake && \
     echo 'set(USE_ROCM OFF)' >> config.cmake && \
     cmake .. && \
+    echo "CMake configuration completed successfully"
 
-    cmake .. && \
+# Build with LIMITED parallelism to avoid memory exhaustion
+RUN cd build && \
     make -j4 VERBOSE=1 || { \
         echo "===================================="; \
         echo "BUILD FAILED - Error details above"; \
@@ -142,5 +174,5 @@ CMD []
 
 # Labels
 LABEL org.opencontainers.image.source=https://github.com/mlc-ai/mlc-llm
-LABEL org.opencontainers.image.description="Multi-purpose MLC-LLM builder (CPU-only)"
+LABEL org.opencontainers.image.description="Multi-purpose MLC-LLM builder with CUDA 12.1 support"
 LABEL org.opencontainers.image.licenses=Apache-2.0
