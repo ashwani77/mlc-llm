@@ -241,7 +241,7 @@ jobs:
 
       - name: Install LLVM
         run: |
-          choco install llvm --version=17.0.6 -y
+          choco install llvm -y
 
       - name: Set LLVM environment variables
         run: |
