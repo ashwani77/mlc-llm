@@ -33,13 +33,8 @@ RUN apt-get update && apt-get install -y \
     && wget https://apt.llvm.org/llvm-snapshot.gpg.key \
     && apt-key add llvm-snapshot.gpg.key \
     && echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" >> /etc/apt/sources.list \
-    && apt-get update \
-    && apt-get install -y \
-        llvm-17 \
-        llvm-17-dev \
-        llvm-17-tools \
-        clang-17 \
-        lld-17 \
+    && apt-get update && apt-get install -y \
+        llvm-17 llvm-17-dev llvm-17-tools clang-17 lld-17 \
     && rm -rf /var/lib/apt/lists/*
 
 ENV LLVM_CONFIG=/usr/bin/llvm-config-17 \
