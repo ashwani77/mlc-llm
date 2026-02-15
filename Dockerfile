@@ -6,24 +6,8 @@ FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y \
-    python3 python3-pip git curl build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN ln -s /usr/bin/python3 /usr/bin/python
-RUN python -m pip install --upgrade pip
-
-# Install prebuilt CUDA TVM + MLC
-RUN pip install --pre -U -f https://mlc.ai/wheels \
-    mlc-ai-nightly-cu121 \
-    mlc-llm-nightly-cu121 \
-    cmake
-
-RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
-    cargo \
-    rustc \
-    lsb-release \
+    python3 python3-pip git curl build-essential ninja-build \
+    wget gnupg cargo rustc lsb-release \
     software-properties-common \
     && wget https://apt.llvm.org/llvm.sh \
     && chmod +x llvm.sh \
@@ -35,6 +19,15 @@ RUN apt-get update && apt-get install -y \
        libllvm17 \
     && rm llvm.sh \
     && rm -rf /var/lib/apt/lists/*
+
+RUN ln -s /usr/bin/python3 /usr/bin/python
+RUN python -m pip install --upgrade pip
+
+# Install prebuilt CUDA TVM + MLC
+RUN pip install --pre -U -f https://mlc.ai/wheels \
+    mlc-ai-nightly-cu121 \
+    mlc-llm-nightly-cu121 \
+    cmake
 
 RUN llvm-config-17 --version
 RUN llvm-config-17 --libfiles
