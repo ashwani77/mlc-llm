@@ -1,0 +1,136 @@
+  build-windows-wheel:
+    name: Build Windows Wheel (x64)
+    needs: run-tests
+    runs-on: windows-latest
+
+    steps:
+      - name: Clone MLC-LLM
+        run: git clone --recursive https://github.com/mlc-ai/mlc-llm.git
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install numpy torch transformers pytest packaging
+          pip install --pre -U -f https://mlc.ai/wheels mlc-ai-nightly-cpu
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install LLVM and create space-free path
+        run: |
+          choco install llvm -y
+          
+          # Create junction to avoid space issues
+          cmd /c mklink /J C:\LLVM "C:\Program Files\LLVM"
+          
+          Write-Host "✅ LLVM installed and linked to C:\LLVM"
+
+      - name: Add LLVM to PATH
+        run: |
+          echo "C:\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Configure and Build
+        run: |
+          # Verify CMakeLists.txt exists
+          if (-not (Test-Path "mlc-llm/CMakeLists.txt")) {
+            Write-Error "mlc-llm/CMakeLists.txt not found!"
+            exit 1
+          }
+          
+          Write-Host "✅ mlc-llm/CMakeLists.txt found"
+          
+          # Enter mlc-llm directory
+          Push-Location mlc-llm
+          
+          # Create build directory
+          if (Test-Path "build") { Remove-Item -Recurse -Force build }
+          New-Item -ItemType Directory -Path build | Out-Null
+          Push-Location build
+
+          # Create config.cmake with space-free LLVM path
+          @"
+set(CMAKE_BUILD_TYPE RelWithDebInfo)
+set(USE_LLVM "C:/LLVM")
+set(HIDE_PRIVATE_SYMBOLS ON)
+set(USE_CUDA OFF)
+set(USE_METAL OFF)
+set(USE_VULKAN OFF)
+set(USE_OPENCL OFF)
+set(USE_ROCM OFF)
+"@ | Out-File -FilePath "config.cmake" -Encoding ASCII
+
+          Write-Host "Config file created"
+
+          # Run CMake with explicit LLVM path to override detection
+          Write-Host "`nRunning CMake..."
+          cmake -G "Visual Studio 17 2022" -A x64 `
+                -DUSE_LLVM="C:/LLVM" `
+                -DLLVM_DIR="C:/LLVM" `
+                ..
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "CMake configuration failed!"
+            Write-Host "`nLLVM-config issue detected. Falling back to pre-built approach..."
+            Pop-Location
+            Pop-Location
+            
+            # Exit with special code to trigger fallback
+            exit 2
+          }
+
+          Write-Host "`nBuilding (15-20 minutes)..."
+          cmake --build . --config Release --parallel 4
+          
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Build failed!"
+            Pop-Location
+            Pop-Location
+            exit 1
+          }
+
+          Pop-Location  # Exit build/
+          Pop-Location  # Exit mlc-llm/
+          Write-Host "✅ Build completed"
+
+      - name: Build Python wheel
+        run: |
+          # Enter mlc-llm directory
+          Push-Location mlc-llm
+          
+          if (-not (Test-Path "python\setup.py")) {
+            Write-Error "python/setup.py not found!"
+            Pop-Location
+            exit 1
+          }
+          
+          Push-Location python
+          python setup.py bdist_wheel
+          Pop-Location  # Exit python/
+          
+          Write-Host "`n✅ Wheel created:"
+          Get-ChildItem python\dist\*.whl | Format-Table Name, Length
+          
+          Pop-Location  # Exit mlc-llm/
+
+      - name: Upload Windows wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: mlc-llm-windows-x64-wheel
+          path: mlc-llm/python/dist/*.whl
+          retention-days: 30
+
+      - name: Build summary
+        run: |
+          $wheel = Get-ChildItem mlc-llm\python\dist\*.whl | Select-Object -First 1
+          @"
+### Windows Wheel Built ✅
+
+**Platform:** Windows x86_64
+**File:** $($wheel.Name)
+**Size:** $([math]::Round($wheel.Length/1MB, 2)) MB
+"@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
