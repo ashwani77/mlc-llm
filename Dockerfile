@@ -15,7 +15,8 @@ RUN python -m pip install --upgrade pip
 # Install prebuilt CUDA TVM + MLC
 RUN pip install --pre -U -f https://mlc.ai/wheels \
     mlc-ai-nightly-cu121 \
-    mlc-llm-nightly-cu121
+    mlc-llm-nightly-cu121 \
+    cmake
 
 #
 # FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
