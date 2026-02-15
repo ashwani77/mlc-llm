@@ -244,7 +244,14 @@ jobs:
       - name: Install LLVM and Set LLVM in PATH
         run: |
           choco install llvm -y
-          echo "C:/Program Files/LLVM/bin" >> $env:GITHUB_PATH
+          
+          # Create junction (works better than symlink on Windows)
+          cmd /c mklink /J C:\LLVM "C:\Program Files\LLVM"
+          
+          Write-Host "✅ LLVM installed at C:\LLVM"
+          Get-ChildItem C:\LLVM\bin | Select-Object -First 3
+          
+          echo "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Configure and Build
         run: |
@@ -287,32 +294,23 @@ jobs:
           Write-Host "CMake source dir: .."
           Write-Host "CMake build dir: $PWD"
 
-          # Set LLVM_DIR environment variable (helps CMake find LLVM)
-          $env:LLVM_DIR = "C:/Program Files/LLVM/bin"
-          
-          # Run CMake with explicit generator and escaped path
-          Write-Host "Running CMake..."
-          cmake -G "Visual Studio 17 2022" -A x64 `
-                -DUSE_LLVM="C:/Program Files/LLVM" `
-                ..
-          
+          cmake -G "Visual Studio 17 2022" -A x64 ..
           if ($LASTEXITCODE -ne 0) {
             Write-Error "CMake configuration failed!"
             Pop-Location
             exit 1
           }
-          
-          Write-Host "`nBuilding (15-20 minutes)..."
+
+          Write-Host "`nBuilding..."
           cmake --build . --config Release --parallel 4
-          
           if ($LASTEXITCODE -ne 0) {
             Write-Error "Build failed!"
             Pop-Location
             exit 1
           }
-          
+
           Pop-Location
-          Write-Host "✅ Build completed successfully"
+          Write-Host "✅ Build completed"
 
       - name: Build Python wheel
         run: |
