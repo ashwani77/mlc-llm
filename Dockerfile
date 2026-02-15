@@ -39,7 +39,16 @@ RUN apt-get update && apt-get install -y \
     vim \
     nano \
     htop \
-    python3-apt --fix-missing \
+    && wget https://apt.llvm.org/llvm-snapshot.gpg.key \
+    && apt-key add llvm-snapshot.gpg.key \
+    && echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" >> /etc/apt/sources.list \
+    && apt-get update \
+    && apt-get install -y \
+        llvm-17 \
+        llvm-17-dev \
+        llvm-17-tools \
+        clang-17 \
+        lld-17 \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Python 3.11 as default
@@ -52,13 +61,13 @@ RUN python -m pip install --upgrade pip setuptools wheel
 # Install Rust and Cargo (required for Hugging Face tokenizers)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
-
-# Install LLVM 17 (required for TVM)
-RUN wget https://apt.llvm.org/llvm.sh && \
-    chmod +x llvm.sh && \
-    ./llvm.sh 17 all && \
-    rm llvm.sh && \
-    rm -rf /var/lib/apt/lists/*
+#
+# # Install LLVM 17 (required for TVM)
+# RUN wget https://apt.llvm.org/llvm.sh && \
+#     chmod +x llvm.sh && \
+#     ./llvm.sh 17 all && \
+#     rm llvm.sh && \
+#     rm -rf /var/lib/apt/lists/*
 
 ENV LLVM_CONFIG=/usr/bin/llvm-config-17 \
     LLVM_HOME=/usr/lib/llvm-17 \
