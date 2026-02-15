@@ -222,64 +222,59 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-      # New (gets MLC-LLM source)
-      - name: Get MLC-LLM source
+      - name: Debug - Show repository structure
         run: |
-          git clone --recursive https://github.com/mlc-ai/mlc-llm.git
-          Set-Location mlc-llm
+          Write-Host "Current directory:"
+          Get-Location
+          Write-Host "`nFiles in root:"
+          Get-ChildItem | Format-Table Name
+          Write-Host "`nChecking for CMakeLists.txt:"
+          Test-Path "CMakeLists.txt"
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: "3.11"
 
-      - name: Install Python build dependencies
-        shell: pwsh
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          pip install cmake ninja
+          pip install cmake ninja numpy torch transformers pytest packaging
           pip install --pre -U -f https://mlc.ai/wheels mlc-ai-nightly-cpu
-          pip install numpy torch transformers pytest packaging
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install LLVM
-        shell: pwsh
-        run: |
-          choco install llvm -y
+        run: choco install llvm --version=17.0.6 -y
 
-      - name: Set LLVM environment variables
-        shell: pwsh
+      - name: Set LLVM in PATH
         run: |
-          echo "LLVM_DIR=C:\Program Files\LLVM" >> $env:GITHUB_ENV
-          echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+          echo "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      - name: Verify build tools
-        shell: pwsh
+      - name: Configure and Build
         run: |
-          Write-Host "Python version:"
-          python --version
-          Write-Host "`nCMake version:"
-          cmake --version
-          Write-Host "`nRust version:"
-          rustc --version
-          Write-Host "`nClang version:"
-          clang --version
-          Write-Host "`nClang location:"
-          where clang
+          # Verify we're in the right place
+          if (-not (Test-Path "CMakeLists.txt")) {
+            Write-Error "CMakeLists.txt not found! You must run this in the mlc-llm repository."
+            Get-ChildItem
+            exit 1
+          }
 
-      - name: Create build directory and config
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path build
-          Set-Location build
+          Write-Host "✅ CMakeLists.txt found"
 
-          Write-Host "Creating config.cmake..."
-          @"
+          # Create build directory
+          if (Test-Path "build") { Remove-Item -Recurse -Force build }
+          New-Item -ItemType Directory -Path build | Out-Null
+
+          # Create config.cmake in build directory
+          Push-Location build
+
+          $config = @"
           set(CMAKE_BUILD_TYPE RelWithDebInfo)
-          set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
           set(USE_LLVM "C:/Program Files/LLVM")
           set(HIDE_PRIVATE_SYMBOLS ON)
           set(USE_CUDA OFF)
@@ -287,34 +282,49 @@ jobs:
           set(USE_VULKAN OFF)
           set(USE_OPENCL OFF)
           set(USE_ROCM OFF)
-          "@ | Out-File -FilePath config.cmake -Encoding UTF8
+          "@
 
-          Write-Host "config.cmake created:"
+          $config | Out-File -FilePath "config.cmake" -Encoding ASCII
+
+          Write-Host "`nConfig file created:"
           Get-Content config.cmake
 
-      - name: Run CMake configuration
-        shell: pwsh
-        run: |
-          Set-Location build
-          Write-Host "Running CMake configuration..."
-          cmake ..
+          # Run CMake from build directory, pointing to parent
+          Write-Host "`nRunning CMake..."
+          Write-Host "CMake source dir: .."
+          Write-Host "CMake build dir: $PWD"
 
-      - name: Build MLC-LLM
-        shell: pwsh
-        run: |
-          Set-Location build
-          Write-Host "Building MLC-LLM (this may take 15-20 minutes)..."
+          cmake -G "Visual Studio 17 2022" -A x64 ..
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "CMake configuration failed!"
+            Pop-Location
+            exit 1
+          }
+
+          Write-Host "`nBuilding..."
           cmake --build . --config Release --parallel 4
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Build failed!"
+            Pop-Location
+            exit 1
+          }
+
+          Pop-Location
+          Write-Host "✅ Build completed"
 
       - name: Build Python wheel
-        shell: pwsh
         run: |
-          Set-Location python
-          Write-Host "Building Python wheel..."
+          if (-not (Test-Path "python\setup.py")) {
+            Write-Error "python/setup.py not found!"
+            exit 1
+          }
+          
+          Push-Location python
           python setup.py bdist_wheel
-
-          Write-Host "`nWheel created:"
-          Get-ChildItem dist\*.whl
+          Pop-Location
+          
+          Write-Host "`n✅ Wheel created:"
+          Get-ChildItem python\dist\*.whl
 
       - name: Upload Windows wheel
         uses: actions/upload-artifact@v4
@@ -324,16 +334,15 @@ jobs:
           retention-days: 30
 
       - name: Build summary
-        shell: pwsh
         run: |
-          $wheel = Get-ChildItem -Path python\dist -Filter *.whl | Select-Object -First 1
+          $wheel = Get-ChildItem python\dist\*.whl | Select-Object -First 1
           @"
           ### Windows Wheel Built ✅
-
+          
           **Platform:** Windows x86_64
-          **Artifacts:** $($wheel.Name)
-          **Size:** $([math]::Round($wheel.Length / 1MB, 2)) MB
-          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          **File:** $($wheel.Name)
+          **Size:** $([math]::Round($wheel.Length/1MB, 2)) MB
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
   # ===========================================================================
   # JOB 5: PUBLISH RELEASE
